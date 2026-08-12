@@ -114,6 +114,8 @@ jobs:
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          # Release job 不需要检出源码；显式指定仓库，避免 gh 依赖当前目录中的 .git。
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
