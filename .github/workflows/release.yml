@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release tag
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Match tag to Cargo version
+        shell: bash
+        run: |
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [[ "$cargo_version" != "$tag_version" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match Cargo.toml version $cargo_version" >&2
+            exit 1
+          fi
+
+  build:
+    name: Build ${{ matrix.asset }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            asset: linux-x64
+            archive: tar.gz
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            asset: windows-x64
+            archive: zip
+          - os: macos-15
+            target: aarch64-apple-darwin
+            asset: macos-arm64
+            archive: tar.gz
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            asset: macos-x64
+            archive: tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --release --locked --target "${{ matrix.target }}"
+
+      - name: Package Unix binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          package="modelgate-${GITHUB_REF_NAME}-${{ matrix.asset }}"
+          mkdir -p "dist/$package"
+          cp "target/${{ matrix.target }}/release/modelgate" "dist/$package/"
+          cp README.md CHANGELOG.md SECURITY.md LICENSE-MIT LICENSE-APACHE "dist/$package/"
+          tar -C dist -czf "dist/$package.tar.gz" "$package"
+          rm -rf "dist/$package"
+
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $package = "modelgate-$env:GITHUB_REF_NAME-${{ matrix.asset }}"
+          New-Item -ItemType Directory -Force "dist/$package" | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/modelgate.exe" "dist/$package/"
+          Copy-Item README.md, CHANGELOG.md, SECURITY.md, LICENSE-MIT, LICENSE-APACHE "dist/$package/"
+          Compress-Archive -Path "dist/$package" -DestinationPath "dist/$package.zip"
+          Remove-Item -Recurse -Force "dist/$package"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: modelgate-${{ matrix.asset }}
+          path: dist/*.${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Create draft release
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: modelgate-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum ./* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --draft \
+            --title "ModelGate $GITHUB_REF_NAME" \
+            --generate-notes

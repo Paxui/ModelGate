@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ModelGate</title>
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand"><div class="logo">MG</div><div>ModelGate</div></div>
+    <nav class="nav">
+      <button class="nav-btn active" data-page="home">主界面</button>
+      <button class="nav-btn" data-page="settings">设置</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="home" class="page active">
+      <h1>模型路由</h1>
+      <div class="subtitle">低价模型处理日常请求；命中监管条件后，自动交给专业模型重做。</div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="label">低价模型</div>
+            <div style="font-weight:700;margin-top:3px">日常请求</div>
+          </div>
+          <span class="pill">Primary</span>
+        </div>
+        <div class="model-row">
+          <select id="cheapSelect">
+            <option value="cheap1">DeepSeek V4F</option>
+            <option value="cheap2">GPT Mini</option>
+            <option value="cheap3">Local Qwen 7B</option>
+            <option value="add">＋ 添加新模型</option>
+          </select>
+          <button class="gear" data-profile="cheap">⚙</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <div>
+            <div class="label">专业模型</div>
+            <div style="font-weight:700;margin-top:3px">异常接管</div>
+          </div>
+          <span class="pill">Fallback</span>
+        </div>
+        <div class="model-row">
+          <select id="premiumSelect">
+            <option value="premium1">DeepSeek V4P</option>
+            <option value="premium2">GPT Pro</option>
+            <option value="premium3">Claude Sonnet</option>
+            <option value="add">＋ 添加新模型</option>
+          </select>
+          <button class="gear" data-profile="premium">⚙</button>
+        </div>
+      </div>
+
+      <div id="apiPanel" class="api-panel">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <strong>本地 OpenAI 兼容 API</strong>
+          <span class="pill">运行中</span>
+        </div>
+        <div class="api-grid">
+          <div class="api-item">
+            <div class="api-title">Base URL</div>
+            <div class="code-row"><div class="code" id="localBase">http://127.0.0.1:8181/v1</div><button class="copy-btn" data-copy="localBase">复制</button></div>
+          </div>
+          <div class="api-item">
+            <div class="api-title">虚拟模型名称</div>
+            <div class="code-row"><div class="code" id="localModel">modelgate-auto</div><button class="copy-btn" data-copy="localModel">复制</button></div>
+          </div>
+          <div class="api-item">
+            <div class="api-title">Chat Completions</div>
+            <div class="code-row"><div class="code" id="localChat">http://127.0.0.1:8181/v1/chat/completions</div><button class="copy-btn" data-copy="localChat">复制</button></div>
+          </div>
+          <div class="api-item">
+            <div class="api-title">Models</div>
+            <div class="code-row"><div class="code" id="localModels">http://127.0.0.1:8181/v1/models</div><button class="copy-btn" data-copy="localModels">复制</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bottom">
+        <div>
+          <div class="status"><span id="statusDot" class="dot"></span><span id="statusText">未运行</span></div>
+          <div id="statusSub" class="note" style="margin-top:6px">点击右下角 ▶ 启动本地中转服务</div>
+        </div>
+        <button id="runBtn" class="run" title="开始运行">▶</button>
+      </div>
+    </section>
+
+    <section id="settings" class="page">
+      <h1>设置</h1>
+      <div class="subtitle">配置模型路由、监管方式与本地 OpenAI-Compatible 服务。</div>
+
+      <div class="settings-list">
+        <button class="setting-entry" data-settings-modal="mode">
+          <div>
+            <div class="setting-title">监管方式</div>
+            <div class="setting-desc" id="modeSummary">当前：可视化规则监管</div>
+          </div>
+          <div class="chev">›</div>
+        </button>
+
+        <button class="setting-entry" data-settings-modal="manual">
+          <div>
+            <div class="setting-title">可视化规则监管</div>
+            <div class="setting-desc">使用支持多条独立规则、类型约束与嵌套插槽的拖拽积木</div>
+          </div>
+          <div class="chev">›</div>
+        </button>
+
+        <button class="setting-entry" data-settings-modal="local">
+          <div>
+            <div class="setting-title">本地蒸馏 AI 监管</div>
+            <div class="setting-desc">选择本地监管模型，并使用 Markdown 编写或导入 AI 监管规则</div>
+          </div>
+          <div class="chev">›</div>
+        </button>
+
+        <button class="setting-entry" data-settings-modal="server">
+          <div>
+            <div class="setting-title">本地服务</div>
+            <div class="setting-desc">监听地址、端口与虚拟模型名称</div>
+          </div>
+          <div class="chev">›</div>
+        </button>
+
+        <button class="setting-entry" id="aboutBtn">
+          <div>
+            <div class="setting-title">关于 ModelGate</div>
+            <div class="setting-desc">查看版本、接口与安全说明</div>
+          </div>
+          <div class="chev">›</div>
+        </button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 模型设置二级菜单 -->
+<div id="modelOverlay" class="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title" id="modelModalTitle">模型设置</div>
+        <div class="note" style="margin-top:4px">OpenAI-Compatible 模型配置</div>
+      </div>
+      <button class="close" id="closeModelOverlay">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>显示名称</label><input id="mDisplay" /></div>
+      <div class="field"><label>Model Name</label><input id="mName" /></div>
+      <div class="field"><label>Base URL</label><input id="mBase" /></div>
+      <div class="field">
+        <label>API Key</label>
+        <div class="inline">
+          <input id="mKey" type="password" />
+          <button class="btn" id="toggleKey">显示</button>
+        </div>
+      </div>
+      <div class="inline">
+        <button class="btn" id="testModelBtn">测试连接</button>
+        <div class="test-result" id="modelTestResult"></div>
+      </div>
+      <div class="note">测试会请求该服务的 <strong>/models</strong>。API Key 不会在配置读取接口中回显。</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="cancelModelOverlay">取消</button>
+      <button class="btn primary" id="saveModelBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 设置二级菜单：监管方式 -->
+<div id="modeOverlay" class="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">监管方式</div>
+      <button class="close" data-close="modeOverlay">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="segment">
+        <button id="manualModeBtn" class="active">可视化规则监管</button>
+        <button id="localModeBtn">本地蒸馏 AI 监管</button>
+      </div>
+      <div id="modeExplain" class="note">
+        当前使用可视化规则监管低价模型输出，本地监管 AI 不参与判断。
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn primary" data-close="modeOverlay">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 设置二级菜单：可视化规则 -->
+<div id="manualOverlay" class="overlay">
+  <div class="modal" style="width:min(1120px,98vw)">
+    <div class="modal-head">
+      <div>
+        <div class="modal-title">可视化规则监管</div>
+        <div class="note" style="margin-top:4px">
+          真正的“类型积木”：触发事件也由用户自行选择；文本、数字和正则插槽既能拖入积木，也能直接键盘输入具体值。
+        </div>
+      </div>
+      <button class="close" data-close="manualOverlay">×</button>
+    </div>
+
+    <div class="modal-body">
+      <div id="manualDisabledNote" class="note" style="display:none;background:var(--soft);padding:12px;border-radius:11px">
+        已启用本地 AI 监管，可视化规则暂时停用。已有积木会保留，切回后立即恢复。
+      </div>
+
+      <div id="manualEditor">
+        <div class="typed-layout">
+          <aside class="typed-palette">
+            <h3>积木库</h3>
+
+            <div class="typed-group">
+              <div class="typed-group-title">事件 / 触发时机</div>
+              <div class="tblock palette event type-event" draggable="true" data-node="event.standard_completed">当低价模型完成回答</div>
+              <div class="tblock palette event type-event" draggable="true" data-node="event.advanced_completed">当高级模型完成回答</div>
+              <div class="tblock palette event type-event" draggable="true" data-node="event.standard_finished">当低价模型请求结束</div>
+              <div class="tblock palette event type-event" draggable="true" data-node="event.advanced_finished">当高级模型请求结束</div>
+            </div>
+
+            <div class="typed-group">
+              <div class="typed-group-title">文本值</div>
+              <div class="tblock palette value type-text" draggable="true" data-node="text.reasoning">模型思考内容</div>
+              <div class="tblock palette value type-text" draggable="true" data-node="text.output">最终回答</div>
+              <div class="tblock palette value type-text" draggable="true" data-node="text.user">用户当前消息</div>
+              <div class="tblock palette value type-text" draggable="true" data-node="text.system">系统提示词</div>
+              <div class="tblock palette value type-text" draggable="true" data-node="text.literal">文本常量</div>
+            </div>
+
+            <div class="typed-group">
+              <div class="typed-group-title">数值</div>
+              <div class="tblock palette value type-number" draggable="true" data-node="number.reasoning_tokens">思考 Token 数</div>
+              <div class="tblock palette value type-number" draggable="true" data-node="number.output_tokens">输出 Token 数</div>
+              <div class="tblock palette value type-number" draggable="true" data-node="number.latency">响应时间 ms</div>
+              <div class="tblock palette value type-number" draggable="true" data-node="number.http_status">HTTP 状态码</div>
+              <div class="tblock palette value type-number" draggable="true" data-node="number.literal">数字常量</div>
+            </div>
+
+            <div class="typed-group">
+              <div class="typed-group-title">正则模式</div>
+              <div class="tblock palette value type-pattern" draggable="true" data-node="pattern.literal">正则表达式</div>
+            </div>
+
+            <div class="typed-group">
+              <div class="typed-group-title">文本条件</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.contains">[文本] 包含 [文本]</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.not_contains">[文本] 不包含 [文本]</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.equals_text">[文本] 等于 [文本]</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.regex">[文本] 匹配正则 [模式]</div>
+            </div>
+
+            <div class="typed-group">
+              <div class="typed-group-title">数值条件</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.gt">[数字] 大于 [数字]</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.lt">[数字] 小于 [数字]</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.gte">[数字] 大于等于 [数字]</div>
+              <div class="tblock palette boolean type-bool" draggable="true" data-node="bool.lte">[数字] 小于等于 [数字]</div>
+            </div>
+
+            <div class="typed-group">
+              <div class="typed-group-title">逻辑条件</div>
+              <div class="tblock palette boolean type-logic" draggable="true" data-node="bool.and">[条件] 并且 [条件]</div>
+              <div class="tblock palette boolean type-logic" draggable="true" data-node="bool.or">[条件] 或者 [条件]</div>
+              <div class="tblock palette boolean type-logic" draggable="true" data-node="bool.not">不是 [条件]</div>
+            </div>
+
+            <div class="typed-group">
+              <div class="typed-group-title">动作</div>
+              <div class="tblock palette action type-action" draggable="true" data-node="action.use_standard">使用低价模型</div>
+              <div class="tblock palette action type-action" draggable="true" data-node="action.use_advanced">使用高级模型</div>
+              <div class="tblock palette action type-action" draggable="true" data-node="action.retry">重新请求当前模型</div>
+              <div class="tblock palette action type-action" draggable="true" data-node="action.log">仅记录日志</div>
+            </div>
+          </aside>
+
+          <section class="typed-workspace-wrap">
+            <div class="demo-disclaimer">
+              <strong>多规则模式</strong>
+              <span>每条规则都有自己的触发事件、条件和动作。你可以分别为低价模型、高级模型或其他事件创建不同规则。</span>
+            </div>
+
+            <div class="rules-toolbar">
+              <button class="btn primary" id="addRuleProgram">＋ 新建规则</button>
+              <button class="btn" id="typedLoadExample">载入参考示例</button>
+              <button class="btn" id="typedTest">测试全部规则</button>
+              <button class="btn" id="typedToggleJson">查看底层结构</button>
+            </div>
+
+            <div class="io-toolbar" style="margin-bottom:10px">
+              <button class="btn" id="exportManualRules">⇩ 导出规则</button>
+              <button class="btn" id="importManualRules">⇧ 导入规则</button>
+              <input id="manualRulesFile" type="file" accept=".json,.mgrule,application/json" style="display:none">
+              <span class="io-note">手动规则使用 JSON / .mgrule 文件保存，方便分享与版本管理。</span>
+            </div>
+            <div id="manualImportStatus" class="import-status"></div>
+
+            <div id="rulesList" class="rules-list"></div>
+            <div id="emptyRules" class="empty-rules">
+              还没有规则。<br>
+              点击“＋ 新建规则”，然后为每条规则分别拖入触发事件、条件和动作。
+            </div>
+
+            <div id="typedTrash" class="trash-zone">🗑 把已放置的积木拖到这里删除</div>
+
+            <div class="typed-help">
+              每条规则彼此独立。例如你可以创建：<br>
+              规则 1：当低价模型回答结束 → 命中某条件 → 使用高级模型。<br>
+              规则 2：当高级模型回答结束 → 命中另一个条件 → 记录日志或切回低价模型。<br>
+              文本、数字、正则槽既能拖入值积木，也能直接键盘输入。
+            </div>
+
+            <div id="typedTestResult" class="test-result" style="margin-top:10px"></div>
+            <pre id="typedJsonPreview" class="rule-json"></pre>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn primary" data-close="manualOverlay">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 设置二级菜单：本地 AI -->
+<div id="localOverlay" class="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">本地蒸馏 AI 监管</div>
+      <button class="close" data-close="localOverlay">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="localDisabledNote" class="note" style="background:var(--soft);padding:12px;border-radius:11px">
+        当前未启用本地 AI 监管。你仍然可以预先编辑配置，启用后才会生效。
+      </div>
+      <div class="field">
+        <label>监管模型</label>
+        <div class="model-row">
+          <select id="judgeSelect">
+            <option>Local Qwen 3B</option>
+            <option>Local DeepSeek Distill 1.5B</option>
+            <option>Local Qwen 7B</option>
+          </select>
+          <button class="gear" id="judgeGear">⚙</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>AI 监管规则（Markdown）</label>
+        <textarea
+          id="judgeMarkdown"
+          class="markdown-editor"
+          placeholder="使用markdown"
+        ></textarea>
+
+        <div class="upload-row" style="margin-top:10px">
+          <button class="btn" id="uploadMarkdownBtn">⇧ 导入 Markdown</button>
+          <button class="btn" id="exportMarkdownBtn">⇩ 导出 Markdown</button>
+          <input id="markdownFileInput" type="file" accept=".md,.markdown,text/markdown,text/plain" style="display:none">
+          <span id="markdownFileName" class="file-name">未选择文件</span>
+        </div>
+
+        <div class="note" style="margin-top:10px">
+          建议在 Markdown 中使用 <strong>## Prompt</strong> 编写监管提示词，
+          并在 <strong>```regex</strong> 代码块中编写用于判断监管模型输出的正则。
+          上传 Markdown 文件后会直接填入上方编辑框。
+        </div>
+      </div>
+
+      <button class="btn" id="fillMarkdownExample">填入 Markdown 示例</button>
+      <button class="btn" id="fakeJudgeTest">测试监管模型</button>
+      <div id="judgeTestResult" class="test-result"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn primary" id="saveLocalSupervisor">保存并完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- 设置二级菜单：本地服务 -->
+<div id="serverOverlay" class="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">本地服务设置</div>
+      <button class="close" data-close="serverOverlay">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field"><label>监听地址</label><input id="listenHost" value="127.0.0.1"></div>
+      <div class="field"><label>端口</label><input id="listenPort" value="8181"></div>
+      <div class="field"><label>虚拟模型名称</label><input id="virtualModel" value="modelgate-auto"></div>
+      <button class="btn" id="serverPreviewBtn">预览 API 地址</button>
+      <div id="serverPreview" class="note"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="serverOverlay">取消</button>
+      <button class="btn primary" id="saveServerBtn">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 关于 -->
+<div id="aboutOverlay" class="overlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">关于 ModelGate</div>
+      <button class="close" data-close="aboutOverlay">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="note">
+        ModelGate 由 Rust、Axum 与原生 Web GUI 构建，提供本地 OpenAI-Compatible 模型路由服务。
+        管理界面通过本机 Management API 保存配置；Gateway 默认只监听 127.0.0.1。
+      </div>
+      <button class="btn" id="aboutPing">点我测试按钮</button>
+      <div id="aboutPingResult" class="test-result"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn primary" data-close="aboutOverlay">知道啦</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- 三级删除确认：避免误删整条规则 -->
+<div id="deleteRuleOverlay" class="overlay">
+  <div class="delete-confirm-card">
+    <div id="deleteStage1" class="delete-stage active">
+      <div class="delete-title">确认废弃这条规则？</div>
+      <div class="delete-copy">
+        这会删除整条规则，包括触发事件、所有条件和动作。为了避免误触，需要完成三次确认。
+      </div>
+      <div class="delete-stage-actions stage-one">
+        <button class="delete-next" id="deleteStage1Confirm">确认废弃</button>
+        <button class="delete-cancel" id="deleteStage1Cancel">取消</button>
+      </div>
+    </div>
+
+    <div id="deleteStage2" class="delete-stage">
+      <div class="delete-title">再确认一次</div>
+      <div class="delete-copy">
+        规则删除后不会出现在当前规则列表中。第二次确认按钮故意移动到了右侧，降低连续误触概率。
+      </div>
+      <div class="delete-stage-actions stage-two">
+        <button class="delete-cancel" id="deleteStage2Cancel">取消</button>
+        <button class="delete-next" id="deleteStage2Confirm">继续废弃</button>
+      </div>
+    </div>
+
+    <div id="deleteStage3" class="delete-stage">
+      <div class="delete-title">最后确认</div>
+      <div class="delete-copy">
+        从中间开始拖动圆形按钮：向右滑到底删除，向左滑到底取消。
+      </div>
+
+      <div class="swipe-confirm-wrap">
+        <div id="deleteSwipeTrack" class="swipe-track">
+          <div class="swipe-mid"></div>
+          <div class="swipe-label-left">← 取消</div>
+          <div class="swipe-label-right">删除 →</div>
+          <div id="deleteSwipeKnob" class="swipe-knob">↔</div>
+        </div>
+        <div class="swipe-help">必须滑到对应一侧才能完成操作</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast">已完成</div>
+
+<script src="/assets/app.js" defer></script>
+</body>
+</html>
