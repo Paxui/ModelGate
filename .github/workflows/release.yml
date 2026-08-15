@@ -84,7 +84,7 @@ jobs:
           Compress-Archive -Path "dist/$package" -DestinationPath "dist/$package.zip"
           Remove-Item -Recurse -Force "dist/$package"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: modelgate-${{ matrix.asset }}
           path: dist/*.${{ matrix.archive }}
