@@ -115,6 +115,11 @@ impl AppConfig {
     }
 
     pub fn config_path() -> Result<PathBuf, ModelGateError> {
+        // 仅在测试构建中生效：允许 API 测试把配置写入临时目录，避免污染真实配置。
+        #[cfg(test)]
+        if let Some(path) = test_config_path() {
+            return Ok(path);
+        }
         ProjectDirs::from("dev", "ModelGate", "ModelGate")
             .map(|dirs| dirs.config_dir().join("config.json"))
             .ok_or_else(|| ModelGateError::Config("无法确定系统配置目录".into()))
@@ -161,6 +166,21 @@ impl AppConfig {
             .map_err(|error| ModelGateError::Config(error.to_string()))?;
         replace_file(&temporary, path).await
     }
+}
+
+#[cfg(test)]
+static TEST_CONFIG_PATH: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+
+/// 让测试把 `config.save()` 写入临时目录。调用方必须串行化使用，
+/// 见 `src/api/mod.rs` 中持有写锁的 API 测试。
+#[cfg(test)]
+pub(crate) fn set_test_config_path(path: PathBuf) {
+    *TEST_CONFIG_PATH.lock().unwrap() = Some(path);
+}
+
+#[cfg(test)]
+fn test_config_path() -> Option<PathBuf> {
+    TEST_CONFIG_PATH.lock().unwrap().clone()
 }
 
 #[cfg(not(windows))]
@@ -347,5 +367,121 @@ mod tests {
         let loaded = AppConfig::load_from(&path).await.unwrap();
         assert_eq!(loaded.server.virtual_model, "second");
         assert!(!path.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn validates_server_and_routing_bounds() {
+        let zero_port = AppConfig {
+            server: ServerConfig {
+                port: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(zero_port.validate().is_err());
+
+        let empty_model = AppConfig {
+            server: ServerConfig {
+                virtual_model: "   ".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(empty_model.validate().is_err());
+
+        let zero_hops = AppConfig {
+            max_route_hops: 0,
+            ..Default::default()
+        };
+        assert!(zero_hops.validate().is_err());
+
+        let too_many_hops = AppConfig {
+            max_route_hops: 17,
+            ..Default::default()
+        };
+        assert!(too_many_hops.validate().is_err());
+
+        let max_hops = AppConfig {
+            max_route_hops: 16,
+            ..Default::default()
+        };
+        assert!(max_hops.validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_duplicate_profile_ids() {
+        let id = Uuid::new_v4();
+        let mut config = AppConfig::default();
+        config.profiles.push(profile(id, "a"));
+        config.profiles.push(profile(id, "b"));
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_oversized_supervisor_markdown() {
+        let mut config = AppConfig::default();
+        config.local_ai_supervisor.markdown = "x".repeat(256 * 1024 + 1);
+        assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn profile_validation_rejects_empty_or_invalid_urls() {
+        let mut candidate = profile(Uuid::new_v4(), "key");
+        candidate.display_name = "".into();
+        assert!(candidate.validate().is_err());
+        candidate.display_name = "正常".into();
+        candidate.base_url = "not a url".into();
+        assert!(candidate.validate().is_err());
+        candidate.base_url = "ftp://example.com/v1".into();
+        assert!(candidate.validate().is_err());
+        candidate.base_url = "https://example.com/v1".into();
+        assert!(candidate.validate().is_ok());
+    }
+
+    #[tokio::test]
+    async fn loading_missing_broken_or_invalid_config() {
+        let directory = tempdir().unwrap();
+
+        let missing = directory.path().join("missing.json");
+        let loaded = AppConfig::load_from(&missing).await.unwrap();
+        assert_eq!(loaded.version, 1);
+
+        let broken = directory.path().join("broken.json");
+        std::fs::write(&broken, b"{not json").unwrap();
+        assert!(AppConfig::load_from(&broken).await.is_err());
+
+        let invalid = directory.path().join("invalid.json");
+        std::fs::write(&invalid, br#"{"version":1,"server":{"port":0}}"#).unwrap();
+        assert!(AppConfig::load_from(&invalid).await.is_err());
+    }
+
+    #[test]
+    fn redacted_serialization_never_contains_key() {
+        let mut config = AppConfig::default();
+        config
+            .profiles
+            .push(profile(Uuid::new_v4(), "sk-super-secret"));
+        let redacted = config.redacted();
+        let text = serde_json::to_string(&redacted).unwrap();
+        assert!(!text.contains("sk-super-secret"));
+        assert!(text.contains("\"api_key\":\"\""));
+    }
+
+    #[test]
+    fn merge_retained_secrets_only_matches_same_id() {
+        let id = Uuid::new_v4();
+        let mut previous = AppConfig::default();
+        previous.profiles.push(profile(id, "sk-old"));
+        let mut submitted = AppConfig::default();
+        submitted.profiles.push(profile(Uuid::new_v4(), "sk-new"));
+        submitted.merge_retained_secrets(&previous);
+        assert_eq!(submitted.profiles[0].exposed_api_key(), "sk-new");
+    }
+
+    #[test]
+    fn profile_debug_redacts_key_even_with_empty_value() {
+        let candidate = profile(Uuid::new_v4(), "");
+        let debug = format!("{:?}", candidate);
+        assert!(debug.contains("[REDACTED]"));
     }
 }

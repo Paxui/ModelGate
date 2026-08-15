@@ -87,6 +87,8 @@ fn parse_decision(content: &str) -> Result<Value, ModelGateError> {
 
 #[cfg(test)]
 mod tests {
+    use crate::provider::ProviderResponse;
+
     use super::*;
 
     #[test]
@@ -104,5 +106,108 @@ mod tests {
     #[test]
     fn rejects_explanatory_text() {
         assert!(parse_decision("建议升级 {\"escalate\":true}").is_err());
+    }
+
+    struct StubProvider(u16, Value);
+
+    #[async_trait::async_trait]
+    impl Provider for StubProvider {
+        async fn chat_completion(
+            &self,
+            _: &ModelProfile,
+            _: &ChatCompletionRequest,
+            _: std::time::Duration,
+        ) -> Result<ProviderResponse, ModelGateError> {
+            Ok(ProviderResponse {
+                status: self.0,
+                body: self.1.clone(),
+            })
+        }
+    }
+
+    fn judge_profile() -> ModelProfile {
+        ModelProfile {
+            id: uuid::Uuid::new_v4(),
+            display_name: "监管".into(),
+            model_name: "judge-model".into(),
+            base_url: "http://localhost/v1".into(),
+            api_key: Default::default(),
+        }
+    }
+
+    fn judge_response(status: u16, content: &str) -> StubProvider {
+        StubProvider(status, json!({"choices":[{"message":{"content":content}}]}))
+    }
+
+    #[tokio::test]
+    async fn empty_markdown_is_rejected() {
+        let provider = judge_response(200, r#"{"escalate":true}"#);
+        let result = evaluate_local_ai(
+            &provider,
+            &judge_profile(),
+            "   ",
+            "候选回答",
+            std::time::Duration::from_secs(1),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn non_200_judge_response_is_rejected() {
+        let provider = judge_response(500, "oops");
+        let result = evaluate_local_ai(
+            &provider,
+            &judge_profile(),
+            "规则",
+            "候选回答",
+            std::time::Duration::from_secs(1),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn missing_judge_content_is_rejected() {
+        let provider = StubProvider(200, json!({"choices": []}));
+        let result = evaluate_local_ai(
+            &provider,
+            &judge_profile(),
+            "规则",
+            "候选回答",
+            std::time::Duration::from_secs(1),
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn escalates_when_judge_returns_true() {
+        let provider = judge_response(200, r#"{"escalate":true}"#);
+        let escalate = evaluate_local_ai(
+            &provider,
+            &judge_profile(),
+            "规则",
+            "候选回答",
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        assert!(escalate);
+    }
+
+    #[tokio::test]
+    async fn does_not_escalate_when_judge_returns_false() {
+        let provider = judge_response(200, "```json\n{\"escalate\":false}\n```");
+        let escalate = evaluate_local_ai(
+            &provider,
+            &judge_profile(),
+            "规则",
+            "候选回答",
+            std::time::Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        assert!(!escalate);
     }
 }

@@ -15,7 +15,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      # 缓存 Cargo 依赖与编译产物，避免每次推送都全量编译。
+      - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --all-targets
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --all-targets --locked
 
+  audit:
+    name: Supply-chain audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 定期扫描 Cargo.lock 中的已知漏洞（RustSec Advisory Database）。
+      - uses: actions-rust-lang/audit@v1

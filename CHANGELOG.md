@@ -6,6 +6,18 @@ ModelGate 的重要变更会记录在此文件中。
 
 ## [Unreleased]
 
+### Added
+
+- 补充 rules、config、protocol、error、supervisor 与 API 模块测试，覆盖规则验证边界、全部条件类型求值、配置校验与密钥脱敏、错误响应映射、监管决策解析与 API 端点（共 57 个单元与集成测试）
+- CI 新增 RustSec 供应链漏洞扫描（`cargo audit`）
+- CI 使用 Cargo 构建缓存，缩短重复构建时间
+- Dependabot 每周自动检查 Cargo 与 GitHub Actions 依赖更新
+
+### Changed
+
+- CI 的 `cargo clippy` 与 `cargo test` 使用 `--locked`，保证构建依赖提交的 `Cargo.lock`
+- 测试构建可通过测试专用配置路径覆盖，API 保存类测试写入临时目录，不再触碰真实配置文件
+
 ### Planned
 
 - OpenAI-Compatible Streaming

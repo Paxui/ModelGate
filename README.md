@@ -290,7 +290,14 @@ cargo test --all-targets
 cargo build --release
 ```
 
-CI 会在 Ubuntu、Windows 和 macOS 上执行检查。Provider 网络测试使用本地 Mock Server，不会调用真实付费模型。
+CI 会在 Ubuntu、Windows 和 macOS 上执行上述检查，并对 `Cargo.lock` 运行 RustSec 漏洞扫描（`cargo audit`）。Provider 网络测试使用本地 Mock Server，不会调用真实付费模型。
+
+如需在本地运行供应链扫描：
+
+```shell
+cargo install cargo-audit
+cargo audit
+```
 
 ## 安全说明
 

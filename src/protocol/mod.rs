@@ -26,3 +26,46 @@ pub struct ChatCompletionResponse {
     #[serde(flatten)]
     pub body: serde_json::Map<String, Value>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chat_request_roundtrips_and_keeps_extra_options() {
+        let json = r#"{
+            "model": "modelgate-auto",
+            "messages": [{"role": "user", "content": "你好", "name": "alice"}],
+            "stream": false,
+            "temperature": 0.7,
+            "max_tokens": 100
+        }"#;
+        let request: ChatCompletionRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(request.model, "modelgate-auto");
+        assert!(!request.stream);
+        assert_eq!(request.options["temperature"], 0.7);
+        assert_eq!(request.options["max_tokens"], 100);
+        assert_eq!(request.messages[0].extra["name"], "alice");
+
+        let encoded = serde_json::to_value(&request).unwrap();
+        assert_eq!(encoded["model"], "modelgate-auto");
+        assert_eq!(encoded["max_tokens"], 100);
+        assert_eq!(encoded["messages"][0]["name"], "alice");
+    }
+
+    #[test]
+    fn stream_defaults_to_false_when_omitted() {
+        let request: ChatCompletionRequest =
+            serde_json::from_str(r#"{"model":"m","messages":[]}"#).unwrap();
+        assert!(!request.stream);
+    }
+
+    #[test]
+    fn message_content_accepts_array_content() {
+        let request: ChatCompletionRequest = serde_json::from_str(
+            r#"{"model":"m","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}"#,
+        )
+        .unwrap();
+        assert!(request.messages[0].content.is_array());
+    }
+}

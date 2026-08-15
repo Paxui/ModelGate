@@ -245,6 +245,7 @@ mod tests {
     use axum::{body::Body, http::Request};
     use http_body_util::BodyExt;
     use tower::ServiceExt;
+    use uuid::Uuid;
 
     use super::*;
 
@@ -310,5 +311,352 @@ mod tests {
         let json: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["data"][0]["id"], "modelgate-auto");
         assert_eq!(json["data"].as_array().unwrap().len(), 1);
+    }
+
+    /// 读取响应并把 JSON 正文解析为 `Value`；空正文返回 `Value::Null`。
+    async fn body_json(response: axum::response::Response) -> (StatusCode, Value) {
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null)
+        };
+        (status, value)
+    }
+
+    fn json_request(method: &str, uri: &str, body: Value) -> Request<Body> {
+        Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    }
+
+    fn rule_json(name: &str) -> Value {
+        json!({
+            "id": Uuid::new_v4(),
+            "name": name,
+            "event": {"type": "answer_completed", "role": "cheap"},
+            "condition": {
+                "type": "contains",
+                "text": {"type": "final_answer"},
+                "value": {"type": "literal", "value": "error"}
+            },
+            "actions": [{"type": "log_only"}]
+        })
+    }
+
+    /// 持有写锁的 API 测试共用一把全局锁：`config.save()` 使用进程级测试路径覆盖，
+    /// 并行测试若交错设置该路径会互相污染，因此这类测试必须串行执行。
+    static SAVE_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// 把 `config.save()` 指向临时目录并返回该目录，测试结束自动清理。
+    fn temp_config_dir() -> tempfile::TempDir {
+        let directory = tempfile::tempdir().unwrap();
+        crate::config::set_test_config_path(directory.path().join("config.json"));
+        directory
+    }
+
+    #[tokio::test]
+    async fn status_reports_version_and_disabled_gateway() {
+        let app = router(AppState::new(crate::config::AppConfig::default()));
+        let (status, body) = body_json(
+            app.oneshot(
+                Request::builder()
+                    .uri("/api/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["gateway_enabled"], false);
+        assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
+    }
+
+    #[tokio::test]
+    async fn config_endpoint_redacts_api_keys() {
+        let mut config = crate::config::AppConfig::default();
+        config.profiles.push(ModelProfile {
+            id: Uuid::new_v4(),
+            display_name: "上游".into(),
+            model_name: "upstream".into(),
+            base_url: "https://example.com/v1".into(),
+            api_key: "sk-top-secret".into(),
+        });
+        let app = router(AppState::new(config));
+        let (status, body) = body_json(
+            app.oneshot(
+                Request::builder()
+                    .uri("/api/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!body.to_string().contains("sk-top-secret"));
+    }
+
+    #[tokio::test]
+    async fn rules_endpoint_returns_saved_rules() {
+        let mut config = crate::config::AppConfig::default();
+        config.rules.push(RuleProgram {
+            id: Uuid::new_v4(),
+            name: "现有规则".into(),
+            event: crate::rules::RuleEvent::AnswerCompleted {
+                role: crate::rules::ModelRole::Cheap,
+            },
+            condition: crate::rules::ConditionExpr::Contains {
+                text: crate::rules::TextExpr::FinalAnswer,
+                value: crate::rules::TextExpr::Literal {
+                    value: "error".into(),
+                },
+            },
+            actions: vec![crate::rules::RuleAction::LogOnly],
+        });
+        let app = router(AppState::new(config));
+        let (status, body) = body_json(
+            app.oneshot(
+                Request::builder()
+                    .uri("/api/rules")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let rules = body.as_array().unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["name"], "现有规则");
+    }
+
+    #[tokio::test]
+    async fn put_rules_rejects_oversized_or_invalid_before_saving() {
+        let app = router(AppState::new(crate::config::AppConfig::default()));
+
+        let too_many: Vec<Value> = (0..257).map(|_| rule_json("规则")).collect();
+        let response = app
+            .clone()
+            .oneshot(json_request("PUT", "/api/rules", json!(too_many)))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let mut invalid = rule_json("空名称");
+        invalid["name"] = Value::String("".into());
+        let response = app
+            .oneshot(json_request("PUT", "/api/rules", json!([invalid])))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn import_rules_rejects_invalid_or_oversized_files() {
+        let app = router(AppState::new(crate::config::AppConfig::default()));
+
+        let wrong_format = json!({"format": "other", "version": 1, "rules": []});
+        let response = app
+            .clone()
+            .oneshot(json_request("POST", "/api/rules/import", wrong_format))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let oversized: Vec<Value> = (0..257).map(|_| rule_json("规则")).collect();
+        let response = app
+            .oneshot(json_request(
+                "POST",
+                "/api/rules/import",
+                json!({"format": "modelgate-visual-rules", "version": 1, "rules": oversized}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn import_rules_appends_to_existing() {
+        let _guard = SAVE_TEST_LOCK.lock().await;
+        let _directory = temp_config_dir();
+        let mut config = crate::config::AppConfig::default();
+        config.rules.push(RuleProgram {
+            id: Uuid::new_v4(),
+            name: "原有规则".into(),
+            event: crate::rules::RuleEvent::RequestFinished {
+                role: crate::rules::ModelRole::Cheap,
+            },
+            condition: crate::rules::ConditionExpr::TextEquals {
+                left: crate::rules::TextExpr::UserMessage,
+                right: crate::rules::TextExpr::Literal { value: "hi".into() },
+            },
+            actions: vec![crate::rules::RuleAction::UseAdvancedModel],
+        });
+        let app = router(AppState::new(config));
+        let file = json!({
+            "format": "modelgate-visual-rules",
+            "version": 1,
+            "exported_at": null,
+            "rules": [rule_json("导入规则")]
+        });
+        let (status, body) = body_json(
+            app.oneshot(json_request("POST", "/api/rules/import", file))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["imported"], 1);
+        assert_eq!(body["total"], 2);
+    }
+
+    #[tokio::test]
+    async fn put_config_rejects_invalid_before_saving() {
+        let app = router(AppState::new(crate::config::AppConfig::default()));
+        let mut config = crate::config::AppConfig::default();
+        config.server.port = 0;
+        let response = app
+            .oneshot(json_request(
+                "PUT",
+                "/api/config",
+                serde_json::to_value(&config).unwrap(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn config_rejects_unknown_fields() {
+        let app = router(AppState::new(crate::config::AppConfig::default()));
+        let response = app
+            .oneshot(json_request(
+                "PUT",
+                "/api/config",
+                json!({"version": 1, "unknown": true}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn put_config_validates_merges_and_persists() {
+        let _guard = SAVE_TEST_LOCK.lock().await;
+        let directory = temp_config_dir();
+        let state = AppState::new(crate::config::AppConfig::default());
+        let app = router(state.clone());
+        let config = crate::config::AppConfig {
+            gateway_enabled: true,
+            server: crate::config::ServerConfig {
+                port: 9999,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let response = app
+            .oneshot(json_request(
+                "PUT",
+                "/api/config",
+                serde_json::to_value(&config).unwrap(),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert!(state.gateway_enabled.load(Ordering::Relaxed));
+        let bytes = std::fs::read(directory.path().join("config.json")).unwrap();
+        let saved: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(saved["server"]["port"], 9999);
+        assert_eq!(saved["gateway_enabled"], true);
+    }
+
+    #[tokio::test]
+    async fn start_and_stop_gateway_persist_state() {
+        let _guard = SAVE_TEST_LOCK.lock().await;
+        let directory = temp_config_dir();
+        let state = AppState::new(crate::config::AppConfig::default());
+        let app = router(state.clone());
+
+        let (status, body) = body_json(
+            app.clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/api/gateway/start")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["gateway_enabled"], true);
+        assert!(state.gateway_enabled.load(Ordering::Relaxed));
+
+        let (status, _) = body_json(
+            app.oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/gateway/stop")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(!state.gateway_enabled.load(Ordering::Relaxed));
+
+        let bytes = std::fs::read(directory.path().join("config.json")).unwrap();
+        let saved: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(saved["gateway_enabled"], false);
+    }
+
+    #[tokio::test]
+    async fn chat_completions_rejects_stream_before_routing() {
+        let config = crate::config::AppConfig {
+            gateway_enabled: true,
+            ..Default::default()
+        };
+        let app = router(AppState::new(config));
+        let response = app
+            .oneshot(json_request(
+                "POST",
+                "/v1/chat/completions",
+                json!({"model": "modelgate-auto", "messages": [], "stream": true}),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn model_test_rejects_invalid_profile_without_network() {
+        let app = router(AppState::new(crate::config::AppConfig::default()));
+        let response = app
+            .oneshot(json_request(
+                "POST",
+                "/api/models/test",
+                json!({
+                    "id": "00000000-0000-0000-0000-000000000000",
+                    "display_name": "",
+                    "model_name": "",
+                    "base_url": ""
+                }),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 }

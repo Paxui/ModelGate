@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # 跟踪 Cargo 依赖更新（含传递依赖与 Cargo.lock 的 PR）。
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "deps"
+      include: scope
+    labels:
+      - dependencies
+
+  # 跟踪 GitHub Actions 自身版本更新。
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+      include: scope
+    labels:
+      - ci

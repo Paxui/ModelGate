@@ -29,3 +29,40 @@ impl IntoResponse for ModelGateError {
             .into_response()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use http_body_util::BodyExt;
+
+    use super::*;
+
+    #[test]
+    fn maps_each_error_to_expected_status() {
+        let cases = [
+            (ModelGateError::Config("x".into()), StatusCode::BAD_REQUEST),
+            (ModelGateError::Rule("x".into()), StatusCode::BAD_REQUEST),
+            (
+                ModelGateError::Provider("x".into()),
+                StatusCode::BAD_GATEWAY,
+            ),
+            (
+                ModelGateError::GatewayDisabled,
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+        ];
+        for (error, expected) in cases {
+            let response = error.into_response();
+            assert_eq!(response.status(), expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn error_body_is_openai_shaped() {
+        let response = ModelGateError::Provider("上游失败".into()).into_response();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["error"]["type"], "modelgate_error");
+        assert_eq!(json["error"]["message"], "Provider 请求失败：上游失败");
+    }
+}
