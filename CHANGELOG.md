@@ -6,6 +6,15 @@ ModelGate 的重要变更会记录在此文件中。
 
 ## [Unreleased]
 
+### Planned
+
+- OpenAI-Compatible Streaming
+- Reasoning Stream 与请求中止
+- macOS Keychain、Windows Credential Manager 和 Linux Secret Service
+- 规则撤销、重做与导入覆盖预览
+
+## [0.1.1] - 2026-08-15
+
 ### Added
 
 - 补充 rules、config、protocol、error、supervisor 与 API 模块测试，覆盖规则验证边界、全部条件类型求值、配置校验与密钥脱敏、错误响应映射、监管决策解析与 API 端点（共 57 个单元与集成测试）
@@ -17,13 +26,7 @@ ModelGate 的重要变更会记录在此文件中。
 
 - CI 的 `cargo clippy` 与 `cargo test` 使用 `--locked`，保证构建依赖提交的 `Cargo.lock`
 - 测试构建可通过测试专用配置路径覆盖，API 保存类测试写入临时目录，不再触碰真实配置文件
-
-### Planned
-
-- OpenAI-Compatible Streaming
-- Reasoning Stream 与请求中止
-- macOS Keychain、Windows Credential Manager 和 Linux Secret Service
-- 规则撤销、重做与导入覆盖预览
+- README 新增 v0.1.1 维护内容章节，v0.1 暂不支持清单改为折叠展示
 
 ## [0.1.0] - 2026-08-12
 
@@ -71,5 +74,6 @@ ModelGate 的重要变更会记录在此文件中。
 - macOS 和 Windows 发布二进制尚未进行代码签名
 - 暂不支持远程管理和多用户访问
 
-[Unreleased]: https://github.com/Paxui/ModelGate/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Paxui/ModelGate/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Paxui/ModelGate/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/Paxui/ModelGate/releases/tag/v0.1.0
