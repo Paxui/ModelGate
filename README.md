@@ -17,6 +17,30 @@ ModelGate 是一个使用 Rust 编写的本地 LLM Gateway，提供 OpenAI-Compa
 - 内嵌 Web 管理界面
 - 默认仅监听 `127.0.0.1:8181`
 
+## v0.1.1 维护内容
+
+v0.1.1 是 v0.1.0 之后的维护版本，聚焦代码质量、测试覆盖与供应链安全，不改变任何外部 API、配置格式或启动方式。升级到 v0.1.1 无需迁移。
+
+### 测试覆盖
+
+- 测试数量从约 20 个增至 57 个，覆盖规则引擎、配置、协议、错误映射、监管决策与 API 端点
+- 规则模块：文件格式/版本/数量/嵌套深度等验证边界，全部文本与数值条件类型的求值，JSON 导入导出往返，未知字段拒绝
+- 配置模块：端口、虚拟模型、路由跳数、重复模型 ID、超限 Markdown、URL 校验，加载失败路径，密钥脱敏与保留合并
+- API 模块：配置与规则读写校验、`.mgrule` 导入追加语义、Gateway 启停持久化、`stream=true` 拒绝、模型连接校验
+- 测试隔离：保存类 API 测试通过测试专用配置路径写入临时目录，不会触碰真实配置文件
+
+### 供应链安全与 CI
+
+- CI 新增 RustSec 漏洞扫描（`cargo audit`），每次推送都会检查 `Cargo.lock` 中的已知漏洞
+- CI 使用 Cargo 构建缓存，缩短重复构建时间
+- CI 的 `cargo clippy` 与 `cargo test` 使用 `--locked`，保证构建严格遵循提交的 `Cargo.lock`
+- 新增 Dependabot，每周自动检查 Cargo 依赖与 GitHub Actions 版本更新
+
+### 文档
+
+- 更新 [CHANGELOG.md](CHANGELOG.md) 的 Unreleased 记录
+- 更新 README 开发检查章节，补充本地 `cargo audit` 用法
+
 ## 从源码运行
 
 从源码运行需要安装：
@@ -311,12 +335,19 @@ cargo audit
 
 ## v0.1 暂不支持
 
+以下限制属于 v0.1 版本（v0.1.0 / v0.1.1 维护版本暂未涉及），计划在后续版本解决：
+
+<details>
+<summary><strong>点击展开 v0.1 暂不支持的功能</strong></summary>
+
 - `stream=true`
 - Reasoning Stream
 - 请求中途 Abort
 - 系统安全凭据库
 - 远程管理、多用户认证和公网监听
 - 规则撤销、重做与导入覆盖预览
+
+</details>
 
 ## 许可证
 
