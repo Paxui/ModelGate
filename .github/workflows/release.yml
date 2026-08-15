@@ -13,7 +13,7 @@ jobs:
     name: Validate release tag
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Match tag to Cargo version
         shell: bash
         run: |
@@ -49,7 +49,7 @@ jobs:
             archive: tar.gz
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust stable
         shell: bash
