@@ -11,7 +11,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -25,6 +25,6 @@ jobs:
     name: Supply-chain audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # 定期扫描 Cargo.lock 中的已知漏洞（RustSec Advisory Database）。
       - uses: actions-rust-lang/audit@v1
