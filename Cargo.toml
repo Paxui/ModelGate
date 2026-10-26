@@ -26,7 +26,7 @@ webbrowser = "1"
 
 [dev-dependencies]
 http-body-util = "0.1"
-httpmock = "0.8"
+httpmock = "0.9"
 tempfile = "3"
 tower = { version = "0.5", features = ["util"] }
 
